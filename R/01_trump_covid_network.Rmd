@@ -1,0 +1,257 @@
+---
+title: "The President's Covid-19 Network"
+author: "Ansgar Wolsing"
+date: "Oct 6th, 2020"
+output: 
+  html_document:
+    bootstrap_version: 4+3
+    theme: yeti
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5.3,
+  fig.process = "CairoPNG",
+  dpi = 320,
+  fig.retina = TRUE
+)
+
+```
+
+```{r packages}
+
+library(tidyverse)
+library(lubridate)
+library(ggtext)
+library(ggraph)
+library(tidygraph)
+
+source("02_graphs_setup.R", verbose = FALSE)
+
+```
+
+## Scrape information
+
+The New York Times has published an [article](https://www.nytimes.com/interactive/2020/10/02/us/politics/trump-contact-tracing-covid.html) with great visualization of the events Donald Trump participated before his positive Covid-19 test result was announced.
+
+Let's scrape Trump's contacts at events from the article using `rvest` package and put everything into a tibble holding details about the meetings.
+
+Disclaimer: This exercise is completely unscientific. Just some pet project scraping and data visualization. I'm not neither an epidemiologist nor virologist.
+
+```{r scrape_data, cache=TRUE}
+library(rvest)
+
+# read the HTML content of the NYT article
+url <- "https://www.nytimes.com/interactive/2020/10/02/us/politics/trump-contact-tracing-covid.html"
+page <- read_html(url)
+
+# extract days nodes
+days <- html_nodes(page, css = ".g-day")
+
+# extract the dates
+day_names <- html_nodes(days, css = ".g-daySubHead") %>% 
+  html_text()
+
+# get the number of meetings for each day
+meetings_each_day <- map(days, ~html_nodes(.x, css = ".g-meeting")) %>% 
+  map_dbl(length)
+names(meetings_each_day) <- day_names
+
+# expand the day names vector by the number of meetings for each day, 
+# so that 1 meeting is 1 row
+day_names_expanded <- rep(day_names, meetings_each_day)
+
+# extract meetings
+meeting_nodes <- html_nodes(days, css = ".g-meeting")
+
+# extract meeting names
+meeting_names <- map_chr(meeting_nodes, ~html_nodes(.x, css = ".g-meetingSubhead") %>% 
+                           html_text())
+
+# tibble of meetings with meeting name and date to begin with
+meetings <- tibble(meeting = meeting_names,
+                   date_str = day_names_expanded)
+
+meetings <- meetings %>% 
+  mutate(wday = str_match(date_str, "(\\w+),")[, 2],
+         date = str_match(date_str, ",\\s(.+)")[, 2])
+
+# extract information for persons attending meetings
+extract_contacts <- function(meeting) {
+  person_nodes <- html_nodes(meeting, css = ".g-personStatus")
+  person_names <- html_nodes(person_nodes, css = ".g-personName") %>% 
+    html_text()
+  person_covid_status <- html_nodes(person_nodes, css = ".g-personMug") %>% 
+    html_attr("class") %>% 
+    str_extract("test-(positive|negative)")
+  
+  tibble(person_name = person_names, person_covid_status)
+}
+
+# apply extraction to all person lists
+meetings_persons <- map(meeting_nodes, extract_contacts)
+
+# add persons to meetings tibble
+meetings <- meetings %>% 
+  bind_cols(tibble(persons = meetings_persons))
+
+# clean up person data
+meetings <- meetings %>%
+  # unnest(persons) %>%
+  mutate(persons = map(
+    persons,
+    ~ mutate(.x, 
+      # cleanup person names by adding whitespaces where br tags were in the HTML
+      person_name = str_replace_all(person_name, 
+                                    "([a-z]|\\.)([A-Z])", 
+                                    "\\1 \\2"),
+      # cleanup covid status
+      person_covid_status = case_when(
+        person_covid_status == "test-positive" ~ "positive",
+        person_covid_status == "test-negative" ~ "negative",
+        is.na(person_covid_status) ~ "unknown"
+      ) %>% as_factor()
+    )
+  ))
+
+# store results with a timestamp in the filename
+ts_str <- format(Sys.time(), "%Y%m%d-%H%M%S")
+write_rds(meetings, 
+          glue::glue("../output/trump_covid_tracing/trump_covid_tracing_meetings_{ts_str}"))
+
+```
+
+
+
+## Prepare the graph
+
+Before building a graph of all contacts of Donald Trump prior to his Covid-19 announcement, we create all unique combinations of persons in the persons tibble for each meeting. The `combn` function from the `utils` package comes in handy. `combn` generates combinatons of the elements of a vector taken `m` elements at a time. The output is matrix (with `simplify = TRUE`), which has to be transposed with `t`. I wrap the call of `combn` in a mapper function which is than applied to each element of the persons lists.
+
+```{r prep_graph}
+
+# remove meetings with no persons listed
+meetings <- meetings %>% 
+  filter(map(persons, nrow) > 0)
+
+# Build a tibble with all combinations of persons
+build_connections <- function(x) {
+  combn(x$person_name, 2) %>% 
+    t() %>% 
+    as_tibble() %>% 
+    rename(person1 = V1, person2 = V2)
+}
+
+# map(meetings$persons, afunc)
+meetings <- meetings %>% 
+  mutate(person_connections = map(persons, build_connections))
+
+# Covid status for all persons consolidated
+person_covid_status <- meetings$persons %>% 
+  bind_rows() %>% 
+  distinct()
+
+# Weighted connections
+connections <- meetings$person_connections %>% 
+  bind_rows() %>% 
+  count(person1, person2, name = "weight", sort = TRUE)
+
+# Attendents Rose Garden meeting
+rose_garden_attendants <- meetings %>% 
+  filter(meeting == "Rose Garden nomination ceremony for Amy Coney Barrett") %>% 
+  unnest(persons) %>% 
+  pull(person_name)
+
+# create undirected graph from connections
+graph <- as_tbl_graph(connections, directed = FALSE) %>% 
+  activate(nodes) %>% 
+  inner_join(person_covid_status, by = c("name" = "person_name")) %>% 
+  mutate(rose_garden_attendant = (name %in% rose_garden_attendants)) %>% 
+  mutate(centrality = centrality_degree())
+
+```
+
+
+## Meetings
+
+Let's take a look how many people were tested positive on Covid-19 after having attended the meetings. Turns out many people attended the Rose Garden nomination ceremony for Amy Coney Barrett.
+
+```{r meetings_plot, fig.height = 7.5}
+
+# colors for Covid test results
+colors <- RColorBrewer::brewer.pal(3, "Accent")
+names(colors) <- c("negative", "positive", "unknown")
+
+plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>, or <b style='color:%s'>unknown</b> test results",
+                          colors["positive"], colors["negative"], colors["unknown"])
+
+meetings %>% 
+  select(meeting, persons, date) %>% 
+  unnest(persons) %>% 
+  ggplot(aes(meeting)) +
+  geom_bar(aes(fill = fct_rev(person_covid_status)), 
+           width = 0.7,
+           position = "stack",
+           show.legend = FALSE) +
+  scale_fill_manual(values = colors) +
+  coord_flip() +
+  facet_grid(rows = vars(date), scales = "free_y", space = "free") +
+  labs(title = "ACB nomination a super-spreading event?",
+       subtitle = plot_subtitle,
+       x = NULL, y = "# participants")
+  
+```
+
+
+
+## Network of contacts visualized
+
+Let's plot the network of contacts and highlight all attendants of the Rose Garden nomination ceremony.
+
+```{r network_vis, fig.width=8, fig.height=6}
+
+plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>, or <b style='color:%s'>unknown</b> test results<br>
+                         The size of the edges indicates how many times people met when Trump was present.<br>
+                         The bigger the nodes, the more contacts the person had with other persons.",
+                          colors["positive"], colors["negative"], colors["unknown"])
+
+set.seed(1234)
+graph %>% 
+  ggraph(layout = "stress") +
+  geom_edge_arc(aes(width = weight, edge_alpha = weight), edge_color = "grey30",
+                 show.legend = FALSE) +
+  geom_node_point(aes(size = centrality, 
+                      fill = person_covid_status, 
+                      shape = rose_garden_attendant), 
+                  alpha = 0.6,
+                 show.legend = FALSE) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 family = "Open Sans SemiBold",
+                 size = 3,
+                 show.legend = FALSE
+                 ) +
+  annotate("text", x  = -1.5, y = 1.5,
+           hjust = 0, col = "grey25", family = "Inconsolata",
+           label = "Squares indicate persons attended\nthe Rose Garden event",
+           size = 3) +
+  geom_curve(aes(x = -1.2, xend = -1, y = 1.35, yend = 1.15),
+             curvature = 0.3, col = "grey50", size = 0.2,
+             arrow = arrow(type = "closed", length = unit(1, "mm"))) +
+  scale_edge_width(range = c(0.25, 1)) +
+  scale_size(range = c(2, 16)) +
+  scale_fill_manual(values = colors) +
+  scale_shape_manual(values = c("TRUE" = 22, "FALSE" = 21)) +
+  labs(title = "Whom Trump met\nbefore his positive test on Covid-19 was announced",
+       subtitle = plot_subtitle
+       ) +
+  # theme_bw() +
+  theme(legend.position = "top",
+        legend.justification = "left",
+        plot.title = element_text(family = "Source Serif Pro SemiBold"))
+
+```
+
+
