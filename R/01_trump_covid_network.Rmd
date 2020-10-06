@@ -185,12 +185,15 @@ Let's take a look how many people were tested positive on Covid-19 after having 
 
 ```{r meetings_plot, fig.height = 7.5}
 
+
 # colors for Covid test results
 colors <- RColorBrewer::brewer.pal(3, "Accent")
 names(colors) <- c("negative", "positive", "unknown")
 
 plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>, or <b style='color:%s'>unknown</b> test results",
                           colors["positive"], colors["negative"], colors["unknown"])
+
+plot_caption <- "Source: bydata.github.io. Data: New York Times."
 
 meetings %>% 
   select(meeting, persons, date) %>% 
@@ -205,6 +208,7 @@ meetings %>%
   facet_grid(rows = vars(date), scales = "free_y", space = "free") +
   labs(title = "ACB nomination a super-spreading event?",
        subtitle = plot_subtitle,
+       caption = plot_caption,
        x = NULL, y = "# participants")
   
 ```
@@ -249,7 +253,8 @@ graph %>%
   scale_fill_manual(values = colors) +
   scale_shape_manual(values = c("TRUE" = 22, "FALSE" = 21)) +
   labs(title = "Whom Trump met\nbefore his positive test on Covid-19 was announced",
-       subtitle = plot_subtitle
+       subtitle = plot_subtitle,
+       caption = plot_caption
        ) +
   # theme_bw() +
   theme(legend.position = "top",
