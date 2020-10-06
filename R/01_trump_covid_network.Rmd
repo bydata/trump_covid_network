@@ -8,6 +8,11 @@ output:
     theme: yeti
 ---
 
+## Background
+
+On Friday, Oct 2nd, ~~alleged tax evader~~ ~~TV celebrity~~ US President Donald Trump announced he got tested positive for Covid-19. In the days leading up to this announcement, Trump met lots of people ignoring any guidelines how to prevent spreading the virus. So let's revisit whom ~~the Superspreader in Chief~~ Trump encountered in the week before he announced he had contracted Covid-19.
+
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -40,7 +45,6 @@ The New York Times has published an [article](https://www.nytimes.com/interactiv
 
 Let's scrape Trump's contacts at events from the article using `rvest` package and put everything into a tibble holding details about the meetings.
 
-Disclaimer: This exercise is completely unscientific. Just some pet project scraping and data visualization. I'm not neither an epidemiologist nor virologist.
 
 ```{r scrape_data, cache=TRUE}
 library(rvest)
@@ -211,7 +215,7 @@ meetings %>%
 
 Let's plot the network of contacts and highlight all attendants of the Rose Garden nomination ceremony.
 
-```{r network_vis, fig.width=8, fig.height=6}
+```{r network_vis, fig.width=8, fig.height=8}
 
 plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>, or <b style='color:%s'>unknown</b> test results<br>
                          The size of the edges indicates how many times people met when Trump was present.<br>
@@ -241,7 +245,7 @@ graph %>%
              curvature = 0.3, col = "grey50", size = 0.2,
              arrow = arrow(type = "closed", length = unit(1, "mm"))) +
   scale_edge_width(range = c(0.25, 1)) +
-  scale_size(range = c(2, 16)) +
+  scale_size(range = c(2, 12)) +
   scale_fill_manual(values = colors) +
   scale_shape_manual(values = c("TRUE" = 22, "FALSE" = 21)) +
   labs(title = "Whom Trump met\nbefore his positive test on Covid-19 was announced",
@@ -253,5 +257,14 @@ graph %>%
         plot.title = element_text(family = "Source Serif Pro SemiBold"))
 
 ```
+
+
+
+***
+
+Disclaimer: This exercise is completely unscientific. I'm  neither an epidemiologist nor virologist. Just some pet project scraping and data visualization. 
+
+***
+
 
 
