@@ -1,7 +1,7 @@
 ---
 title: "The President's Covid-19 Network"
 author: "Ansgar Wolsing"
-date: "Oct 6th, 2020"
+date: "Oct 7th, 2020"
 output: 
   html_document:
     bootstrap_version: 4+3
@@ -46,7 +46,7 @@ The New York Times has published an [article](https://www.nytimes.com/interactiv
 Let's scrape Trump's contacts at events from the article using `rvest` package and put everything into a tibble holding details about the meetings.
 
 
-```{r scrape_data, cache=TRUE}
+```{r scrape_data}
 library(rvest)
 
 # read the HTML content of the NYT article
@@ -125,7 +125,7 @@ meetings <- meetings %>%
 # store results with a timestamp in the filename
 ts_str <- format(Sys.time(), "%Y%m%d-%H%M%S")
 write_rds(meetings, 
-          glue::glue("../output/trump_covid_tracing/trump_covid_tracing_meetings_{ts_str}"))
+          glue::glue("../output/trump_covid_tracing/trump_covid_tracing_meetings_{ts_str}.RData"))
 
 ```
 
@@ -190,7 +190,8 @@ Let's take a look how many people were tested positive on Covid-19 after having 
 colors <- RColorBrewer::brewer.pal(3, "Accent")
 names(colors) <- c("negative", "positive", "unknown")
 
-plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>, or <b style='color:%s'>unknown</b> test results",
+plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>,
+                         or <b style='color:%s'>unknown</b> test results",
                           colors["positive"], colors["negative"], colors["unknown"])
 
 plot_caption <- "Source: bydata.github.io. Data: New York Times."
@@ -221,7 +222,8 @@ Let's plot the network of contacts and highlight all attendants of the Rose Gard
 
 ```{r network_vis, fig.width=8, fig.height=8}
 
-plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>, or <b style='color:%s'>unknown</b> test results<br>
+plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>negative</b>,
+                          or <b style='color:%s'>unknown</b> test results<br>
                          The size of the edges indicates how many times people met when Trump was present.<br>
                          The bigger the nodes, the more contacts the person had with other persons.",
                           colors["positive"], colors["negative"], colors["unknown"])
@@ -229,7 +231,7 @@ plot_subtitle <- sprintf("<b style='color:%s'>Positive</b>, <b style='color:%s'>
 set.seed(1234)
 graph %>% 
   ggraph(layout = "stress") +
-  geom_edge_arc(aes(width = weight, edge_alpha = weight), edge_color = "grey30",
+  geom_edge_arc(aes(width = weight, edge_alpha = weight), edge_color = "grey50",
                  show.legend = FALSE) +
   geom_node_point(aes(size = centrality, 
                       fill = person_covid_status, 
@@ -267,7 +269,7 @@ graph %>%
 
 ***
 
-Disclaimer: This exercise is completely unscientific. I'm  neither an epidemiologist nor virologist. Just some pet project scraping and data visualization. 
+Disclaimer: This exercise is completely unscientific. I'm  neither an epidemiologist nor virologist. It's  just some pet project scraping and data visualization. 
 
 ***
 
